@@ -3,145 +3,178 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Система сбора анкет | HR-Ассистент</title>
+
+<title>Цифровая анкета кандидата</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-body { 
-    font-family: 'Inter', sans-serif; 
-    background-color: #f1f5f9;
-    color: #334155;
+body {
+    background:#f1f5f9;
+    font-family: Inter, sans-serif;
 }
-
-.report-shadow {
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-}
-
-.fade-in { animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
 .hidden { display:none; }
 </style>
+
 </head>
 
 <body class="min-h-screen py-10 px-4">
 
-<div class="max-w-3xl mx-auto">
+<div class="max-w-3xl mx-auto bg-white rounded-2xl shadow p-6">
 
-<div class="bg-white rounded-3xl report-shadow p-8">
+<h1 class="text-xl font-bold mb-4">Цифровая анкета кандидата</h1>
 
-<h1 class="text-xl font-bold mb-6">
-Цифровая анкета кандидата
-</h1>
-
-<!-- ЭКРАН РЕГИСТРАЦИИ -->
+<!-- РЕГИСТРАЦИЯ -->
 <div id="startScreen">
 
-<h2 class="text-lg mb-4">Регистрация анкеты</h2>
+<label>ФИО</label>
+<input id="regName" class="w-full border p-3 mb-3 rounded">
 
-Фамилия и Имя<br>
-<input id="regName" class="w-full border p-3 mb-3"><br>
+<label>Возраст</label>
+<input id="regAge" class="w-full border p-3 mb-3 rounded">
 
-Возраст<br>
-<input id="regAge" class="w-full border p-3 mb-3"><br>
+<label>Должность</label>
+<input id="regJob" class="w-full border p-3 mb-3 rounded">
 
-Должность<br>
-<input id="regPosition" class="w-full border p-3 mb-3"><br>
-
-<button onclick="startTest()" 
-class="bg-indigo-600 text-white px-6 py-3 rounded">
+<button onclick="startApp()" 
+class="w-full bg-black text-white p-3 rounded">
 Начать заполнение
 </button>
 
 </div>
 
-<!-- ЭКРАН ВОПРОСОВ -->
-<div id="questionScreen" class="hidden fade-in">
-
-<h3 class="font-bold mb-2">
-1. Опишите продукт вашей должности
-</h3>
-<textarea id="q1" class="w-full border p-3 mb-4"></textarea>
-
-<h3 class="font-bold mb-2">
-2. Сложная ситуация и ваши действия
-</h3>
-<textarea id="q2" class="w-full border p-3 mb-4"></textarea>
-
-<h3 class="font-bold mb-2">
-3. Разница «работал» и «дал результат»
-</h3>
-<textarea id="q3" class="w-full border p-3 mb-4"></textarea>
-
-<button onclick="finishTest()" 
-class="bg-green-600 text-white px-6 py-3 rounded">
-Отправить HR
-</button>
+<!-- ВОПРОСЫ -->
+<div id="questionScreen" class="hidden"></div>
 
 </div>
 
-</div>
-</div>
+<!-- PDF -->
+<div id="pdfTemplate" class="hidden"></div>
 
 <script>
 
-// === ХРАНИЛИЩЕ ДАННЫХ ===
-const formData = {
- name: '',
- age: '',
- position: '',
- answers: {}
+let candidate = {};
+let answers = [];
+let currentIdx = 0;
+let startTime;
+
+const questions = [
+"Опишите продукт вашей последней должности",
+"Сложная рабочая ситуация и ваши действия",
+"Разница «работал» и «дал результат»",
+"Что для вас главное в работе",
+"Пример достижения",
+"Рост ответственности",
+"Действия при ошибке",
+"Какую пользу вы приносите компании",
+"Польза компании для вас",
+"Опишите себя тремя глаголами",
+"Причина ухода с работы"
+];
+
+window.startApp = function(){
+
+const name = regName.value.trim();
+const age = regAge.value.trim();
+const job = regJob.value.trim();
+
+if(!name || !age || !job){
+    alert("Заполните все поля");
+    return;
+}
+
+candidate = { name, age, job, date: new Date().toLocaleString() };
+
+startScreen.classList.add("hidden");
+questionScreen.classList.remove("hidden");
+
+startTime = Date.now();
+
+renderQuestion();
+
 };
 
-// === ПЕРЕХОД К ВОПРОСАМ ===
-function startTest(){
+function renderQuestion(){
 
- formData.name = regName.value;
- formData.age = regAge.value;
- formData.position = regPosition.value;
+let q = questions[currentIdx];
 
- if(!formData.name){
-   alert("Введите ФИО");
-   return;
- }
+questionScreen.innerHTML = `
 
- document.getElementById('startScreen').classList.add('hidden');
- document.getElementById('questionScreen').classList.remove('hidden');
+<h3 class="text-lg font-bold mb-3">
+${currentIdx+1}. ${q}
+</h3>
+
+<textarea id="ans" class="w-full border p-3 mb-3 rounded h-40"></textarea>
+
+<button onclick="next()" 
+class="bg-indigo-600 text-white px-6 py-3 rounded">
+Далее
+</button>
+
+`;
 
 }
 
-// === ФОРМИРОВАНИЕ ФАЙЛА ===
-function finishTest(){
+window.next = function(){
 
- let text = `
-АНКЕТА КАНДИДАТА
+let val = ans.value.trim();
 
-ФИО: ${formData.name}
-Возраст: ${formData.age}
-Должность: ${formData.position}
+if(val.length < 3){
+ alert("Ответьте подробнее");
+ return;
+}
 
-1. Продукт должности:
-${q1.value}
+answers.push({
+ question: questions[currentIdx],
+ value: val
+});
 
-2. Сложная ситуация:
-${q2.value}
+if(currentIdx < questions.length-1){
+ currentIdx++;
+ renderQuestion();
+}
+else finish();
 
-3. Разница:
-${q3.value}
+};
 
-Дата: ${new Date().toLocaleString()}
+function finish(){
+
+let total = Math.floor((Date.now()-startTime)/1000);
+
+let html = `
+<h2>Анкета кандидата</h2>
+
+ФИО: ${candidate.name}<br>
+Возраст: ${candidate.age}<br>
+Должность: ${candidate.job}<br>
+Дата: ${candidate.date}<br>
+Время: ${total} сек<br><br>
 `;
 
- let blob = new Blob([text], {type:'text/plain'});
- let a = document.createElement('a');
- a.href = URL.createObjectURL(blob);
- a.download = "anketa_kandidata.txt";
- a.click();
+answers.forEach((a,i)=>{
+ html += `<b>${i+1}. ${a.question}</b><br>
+ ${a.value}<br><br>`;
+});
 
- alert("Файл скачан. Отправьте его HR.");
+pdfTemplate.innerHTML = html;
+
+html2pdf().from(pdfTemplate).save(
+ "anketa_"+candidate.name+".pdf"
+);
+
+questionScreen.innerHTML = `
+
+<h2 class="text-xl font-bold mb-4">
+Анкета готова
+</h2>
+
+<button onclick="location.reload()" 
+class="bg-green-600 text-white px-6 py-3 rounded">
+Пройти снова
+</button>
+
+`;
 
 }
 
