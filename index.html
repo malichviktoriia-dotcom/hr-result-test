@@ -1,184 +1,45 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<tr><td style="font-weight: bold; width: 140px;">Кандидат:</td><td>${userData.name}</td></tr>
+<tr><td style="font-weight: bold;">Должность:</td><td>${userData.job}</td></tr>
+<tr><td style="font-weight: bold;">Возраст:</td><td>${userData.age}</td></tr>
+<tr><td style="font-weight: bold;">Общее время:</td><td>${userData.totalTime}</td></tr>
+<tr><td style="font-weight: bold;">Дата и время:</td><td>${new Date().toLocaleString()}</td></tr>
+</table>
 
-<title>Цифровая анкета кандидата</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-<style>
-body {
-    background:#f1f5f9;
-    font-family: Inter, sans-serif;
-}
-.hidden { display:none; }
-</style>
-
-</head>
-
-<body class="min-h-screen py-10 px-4">
-
-<div class="max-w-3xl mx-auto bg-white rounded-2xl shadow p-6">
-
-<h1 class="text-xl font-bold mb-4">Цифровая анкета кандидата</h1>
-
-<!-- РЕГИСТРАЦИЯ -->
-<div id="startScreen">
-
-<label>ФИО</label>
-<input id="regName" class="w-full border p-3 mb-3 rounded">
-
-<label>Возраст</label>
-<input id="regAge" class="w-full border p-3 mb-3 rounded">
-
-<label>Должность</label>
-<input id="regJob" class="w-full border p-3 mb-3 rounded">
-
-<button onclick="startApp()" 
-class="w-full bg-black text-white p-3 rounded">
-Начать заполнение
-</button>
-
+<div style="background: #f1f5f9; padding: 10px; border-left: 3px solid #64748b; margin-bottom: 30px; font-size: 9pt;">
+<strong>Комментарий для HR:</strong> В данной анкете представлены «сырые» ответы кандидата. 
+Анализ должен проводиться вручную согласно установленной методике оценки.
 </div>
-
-<!-- ВОПРОСЫ -->
-<div id="questionScreen" class="hidden"></div>
-
-</div>
-
-<!-- PDF -->
-<div id="pdfTemplate" class="hidden"></div>
-
-<script>
-
-let candidate = {};
-let answers = [];
-let currentIdx = 0;
-let startTime;
-
-const questions = [
-"Опишите продукт вашей последней должности",
-"Сложная рабочая ситуация и ваши действия",
-"Разница «работал» и «дал результат»",
-"Что для вас главное в работе",
-"Пример достижения",
-"Рост ответственности",
-"Действия при ошибке",
-"Какую пользу вы приносите компании",
-"Польза компании для вас",
-"Опишите себя тремя глаголами",
-"Причина ухода с работы"
-];
-
-window.startApp = function(){
-
-const name = regName.value.trim();
-const age = regAge.value.trim();
-const job = regJob.value.trim();
-
-if(!name || !age || !job){
-    alert("Заполните все поля");
-    return;
-}
-
-candidate = { name, age, job, date: new Date().toLocaleString() };
-
-startScreen.classList.add("hidden");
-questionScreen.classList.remove("hidden");
-
-startTime = Date.now();
-
-renderQuestion();
-
-};
-
-function renderQuestion(){
-
-let q = questions[currentIdx];
-
-questionScreen.innerHTML = `
-
-<h3 class="text-lg font-bold mb-3">
-${currentIdx+1}. ${q}
-</h3>
-
-<textarea id="ans" class="w-full border p-3 mb-3 rounded h-40"></textarea>
-
-<button onclick="next()" 
-class="bg-indigo-600 text-white px-6 py-3 rounded">
-Далее
-</button>
-
 `;
 
-}
-
-window.next = function(){
-
-let val = ans.value.trim();
-
-if(val.length < 3){
- alert("Ответьте подробнее");
- return;
-}
-
-answers.push({
- question: questions[currentIdx],
- value: val
+answers.forEach((a, i) => {
+const formattedTime = ${Math.floor(a.seconds / 60)}:${(a.seconds % 60).toString().padStart(2, '0')};
+html += `
+<div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 15px; page-break-inside: avoid;">
+<div style="font-weight: bold; font-size: 10pt; margin-bottom: 5px;">${i+1}. ${a.qText}</div>
+<div style="font-size: 8pt; color: #888; margin-bottom: 5px;">Тип: ${a.qType} | Время на ответ: ${formattedTime}</div>
+<div style="background: #fff; border: 1px solid #ddd; padding: 10px; font-size: 11pt; white-space: pre-wrap;">${a.label ? a.label : a.value}</div>
+</div>
+`;
 });
 
-if(currentIdx < questions.length-1){
- currentIdx++;
- renderQuestion();
-}
-else finish();
+html += `
+<div style="margin-top: 30px; text-align: right; font-size: 8pt; color: #999;">
+Общее количество символов: ${totalSymbols} | Идентификатор сессии: ${Math.random().toString(36).substr(2, 9)}
+</div>
+`;
 
+content.innerHTML = html;
+
+const opt = {
+margin: 15,
+filename: anketa_${userData.name.replace(/\s+/g, '_')}.pdf,
+image: { type: 'jpeg', quality: 0.98 },
+html2canvas: { scale: 2 },
+jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
 };
-
-function finish(){
-
-let total = Math.floor((Date.now()-startTime)/1000);
-
-let html = `
-<h2>Анкета кандидата</h2>
-
-ФИО: ${candidate.name}<br>
-Возраст: ${candidate.age}<br>
-Должность: ${candidate.job}<br>
-Дата: ${candidate.date}<br>
-Время: ${total} сек<br><br>
-`;
-
-answers.forEach((a,i)=>{
- html += `<b>${i+1}. ${a.question}</b><br>
- ${a.value}<br><br>`;
-});
-
-pdfTemplate.innerHTML = html;
-
-html2pdf().from(pdfTemplate).save(
- "anketa_"+candidate.name+".pdf"
-);
-
-questionScreen.innerHTML = `
-
-<h2 class="text-xl font-bold mb-4">
-Анкета готова
-</h2>
-
-<button onclick="location.reload()" 
-class="bg-green-600 text-white px-6 py-3 rounded">
-Пройти снова
-</button>
-
-`;
-
-}
+html2pdf().set(opt).from(content).save();
+};
 
 </script>
-
 </body>
 </html>
