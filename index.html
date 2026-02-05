@@ -1,3 +1,313 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR-Система сбора анкет</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+body {
+font-family: 'Inter', sans-serif;
+background-color: #f8fafc;
+color: #1e293b;
+}
+
+.document-card {
+background: #ffffff;
+box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+border: 1px solid #e2e8f0;
+}
+
+.input-standard {
+@apply w-full bg-white border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all;
+}
+
+.btn-black {
+@apply bg-slate-900 hover:bg-black text-white font-semibold py-3 px-6 rounded-lg transition-all active:scale-95;
+}
+
+.pdf-style {
+background: white;
+color: black;
+padding: 30px;
+font-family: 'Inter', sans-serif;
+line-height: 1.4;
+}
+
+/* Анимации перехода */
+.fade-in { animation: fadeIn 0.3s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+<div id="app" class="w-full max-w-2xl document-card rounded-2xl overflow-hidden">
+<!-- Header -->
+<div id="appHeader" class="bg-slate-50 border-b border-slate-200 px-8 py-4 flex justify-between items-center">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-indigo-600"></div>
+<h2 class="text-xs font-bold text-slate-500 uppercase tracking-widest">Анкетирование кандидата</h2>
+</div>
+<div id="metaDisplay" class="hidden text-[10px] font-mono text-slate-400">
+TIME: <span id="globalTimer">00:00</span>
+</div>
+</div>
+
+<!-- Content Area -->
+<div id="mainView" class="p-8 min-h-[450px] flex flex-col justify-center">
+<!-- Registration Form -->
+<div id="regForm" class="fade-in">
+<h1 class="text-2xl font-bold text-slate-900 mb-2">Добро пожаловать</h1>
+<p class="text-slate-500 mb-8 text-sm leading-relaxed">Система предназначена для структурированного сбора ответов. Пожалуйста, отвечайте максимально полно. Система фиксирует время ответа на каждый вопрос.</p>
+
+<div class="space-y-4">
+<div>
+<label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Имя и Фамилия</label>
+<input type="text" id="userName" class="input-standard" placeholder="Иван Иванов">
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Возраст</label>
+<input type="number" id="userAge" class="input-standard" placeholder="25">
+</div>
+<div>
+<label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Должность</label>
+<input type="text" id="userJob" class="input-standard" placeholder="Менеджер">
+</div>
+</div>
+</div>
+
+<button onclick="initTest()" class="btn-black w-full mt-8">
+Начать заполнение анкеты
+</button>
+</div>
+</div>
+</div>
+
+<!-- Hidden PDF Template -->
+<div id="pdfContainer" class="hidden">
+<div id="pdfContent" class="pdf-style"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+// Firebase Config
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'hr-final-collector';
+
+// State
+let userData = {};
+let answers = [];
+let currentIdx = 0;
+let globalStartTime;
+let questionStartTime;
+let timerInterval;
+
+const questions = [
+{ id: 1, type: "TEXT", q: "Опишите продукт вашей последней должности так, чтобы можно было измерить итог вашей работы." },
+{ id: 2, type: "TEXT", q: "Вспомните сложную рабочую ситуацию. Что СДЕЛАЛИ лично вы?" },
+{ id: 3, type: "TEXT", q: "Чем для вас отличается «я работал» от «я дал результат»?" },
+{ id: 4, type: "TEXT", q: "Что для вас главное в работе?" },
+{ id: 5, type: "TEXT", q: "Приведите пример достижения, которым вы гордитесь." },
+{ id: 6, type: "TEXT", q: "Как менялась ваша ответственность со временем?" },
+{ id: 7, type: "TEXT", q: "Как вы действуете, когда допустили ошибку?" },
+{ id: 8, type: "TEXT", q: "Какую пользу вы приносите компании?" },
+{ id: 9, type: "TEXT", q: "Как компания приносит пользу вам?" },
+{ id: 10, type: "TEXT", q: "Опишите себя тремя глаголами." },
+{ id: 11, type: "TEXT", q: "Что должно произойти, чтобы вы ушли с работы?" },
+{ id: 12, type: "CHOICE", q: "Вам поставили цель без инструкции:", options: [
+{ k: "A", v: "Формирую план и действую" },
+{ k: "B", v: "Ищу регламент или шаблон" },
+{ k: "C", v: "Жду подробных указаний" }
+]},
+{ id: 13, type: "CHOICE", q: "Коллега сорвал задачу, влияющую на ваш итог:", options: [
+{ k: "A", v: "Беру ответственность и закрываю задачу" },
+{ k: "B", v: "Делаю только свою часть по процессу" },
+{ k: "C", v: "Сообщаю руководству и жду решения" }
+]},
+{ id: 14, type: "CHOICE", q: "Как вы оцениваете свою эффективность?", options: [
+{ k: "A", v: "По измеримому результату" },
+{ k: "B", v: "По качеству выполнения процессов" },
+{ k: "C", v: "По оценке руководства" }
+]},
+{ id: 15, type: "YESNO", q: "Считаете ли вы, что сотрудник несет личную ответственность за план?" },
+{ id: 16, type: "YESNO", q: "Сравниваете ли вы свои результаты с результатами других людей?" }
+];
+
+window.initTest = async () => {
+const name = document.getElementById('userName').value.trim();
+const age = document.getElementById('userAge').value.trim();
+const job = document.getElementById('userJob').value.trim();
+
+if(!name || !age || !job) return alert("Заполните профиль для продолжения");
+
+userData = { name, age, job, startedAt: new Date().toLocaleTimeString() };
+
+await signInAnonymously(auth);
+globalStartTime = Date.now();
+document.getElementById('metaDisplay').classList.remove('hidden');
+timerInterval = setInterval(updateTimer, 1000);
+
+renderQuestion();
+};
+
+const updateTimer = () => {
+const diff = Math.floor((Date.now() - globalStartTime) / 1000);
+const m = Math.floor(diff / 60).toString().padStart(2, '0');
+const s = (diff % 60).toString().padStart(2, '0');
+document.getElementById('globalTimer').innerText = `${m}:${s}`;
+};
+
+const renderQuestion = () => {
+questionStartTime = Date.now();
+const q = questions[currentIdx];
+const view = document.getElementById('mainView');
+
+let html = `<div class="fade-in">
+<span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-2 block">Вопрос ${currentIdx + 1} из ${questions.length}</span>
+<h3 class="text-lg font-bold text-slate-800 mb-6 leading-tight">${q.q}</h3>`;
+
+if (q.type === "TEXT") {
+html += `
+<textarea id="ansInput" class="w-full min-h-[200px] bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-700 outline-none focus:border-indigo-500 transition-all" placeholder="Ваш развернутый ответ..." maxlength="1500"></textarea>
+<div class="flex justify-between items-center mt-4">
+<span id="chars" class="text-[10px] font-bold text-slate-400">0 / 1500</span>
+<button onclick="handleNext()" class="btn-black">Продолжить</button>
+</div>`;
+} else if (q.type === "CHOICE") {
+html += `<div class="space-y-3">`;
+q.options.forEach(opt => {
+html += `
+<button onclick="submitVal('${opt.k}', '${opt.v}')" class="w-full flex items-center p-4 border border-slate-100 rounded-xl hover:bg-slate-50 hover:border-slate-300 transition-all text-left">
+<span class="w-8 h-8 flex items-center justify-center bg-slate-900 text-white rounded-lg mr-4 font-bold text-xs">${opt.k}</span>
+<span class="text-slate-700 text-sm font-medium">${opt.v}</span>
+</button>`;
+});
+html += `</div>`;
+} else if (q.type === "YESNO") {
+html += `
+<div class="grid grid-cols-2 gap-4">
+<button onclick="submitVal('Да')" class="py-12 border-2 border-slate-100 rounded-2xl hover:border-indigo-500 hover:text-indigo-600 font-bold transition-all">ДА</button>
+<button onclick="submitVal('Нет')" class="py-12 border-2 border-slate-100 rounded-2xl hover:border-indigo-500 hover:text-indigo-600 font-bold transition-all">НЕТ</button>
+</div>`;
+}
+
+view.innerHTML = html;
+
+if (q.type === "TEXT") {
+const area = document.getElementById('ansInput');
+area.focus();
+area.oninput = (e) => document.getElementById('chars').innerText = `${e.target.value.length} / 1500`;
+}
+};
+
+window.handleNext = () => {
+const val = document.getElementById('ansInput').value.trim();
+if (val.length < 3) return alert("Ответ слишком короткий");
+submitVal(val);
+};
+
+window.submitVal = (val, label = null) => {
+const timeTaken = Math.floor((Date.now() - questionStartTime) / 1000);
+answers.push({
+qId: questions[currentIdx].id,
+qText: questions[currentIdx].q,
+qType: questions[currentIdx].type,
+value: val,
+label: label,
+seconds: timeTaken
+});
+
+if (currentIdx < questions.length - 1) {
+currentIdx++;
+renderQuestion();
+} else {
+finishFlow();
+}
+};
+
+const finishFlow = () => {
+clearInterval(timerInterval);
+const totalSec = Math.floor((Date.now() - globalStartTime) / 1000);
+userData.totalTime = `${Math.floor(totalSec/60)} мин ${totalSec%60} сек`;
+
+const view = document.getElementById('mainView');
+view.innerHTML = `
+<div class="fade-in text-center max-w-sm mx-auto">
+<div class="w-16 h-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mx-auto mb-6">
+<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+</div>
+<h2 class="text-xl font-bold text-slate-900 mb-2">Анкета сформирована</h2>
+<p class="text-slate-500 text-sm mb-8">Для завершения укажите вашу почту. HR-специалист получит ваши ответы в виде официального отчета и свяжется с вами.</p>
+
+<div class="space-y-4">
+<input type="email" id="contactEmail" class="input-standard" placeholder="Ваш Email для обратной связи">
+<button onclick="finalSubmit()" id="finalBtn" class="btn-black w-full">Отправить анкету специалисту</button>
+</div>
+</div>`;
+};
+
+window.finalSubmit = async () => {
+const email = document.getElementById('contactEmail').value.trim();
+if(!email.includes('@')) return alert("Введите корректный email");
+
+const btn = document.getElementById('finalBtn');
+btn.disabled = true;
+btn.innerText = "Синхронизация...";
+
+try {
+// Save to Cloud
+await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'submissions'), {
+profile: { ...userData, email },
+answers,
+submittedAt: serverTimestamp()
+});
+
+showSuccessScreen();
+} catch (e) {
+alert("Ошибка соединения. Попробуйте еще раз.");
+btn.disabled = false;
+btn.innerText = "Отправить анкету специалисту";
+}
+};
+
+const showSuccessScreen = () => {
+document.getElementById('appHeader').style.background = "#f0fdf4";
+document.getElementById('mainView').innerHTML = `
+<div class="fade-in text-center">
+<div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+<svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+</div>
+<h2 class="text-2xl font-bold text-slate-900 mb-2">Успешно отправлено</h2>
+<p class="text-slate-500 text-sm mb-10">Ваши данные сохранены в облаке. Мы передали их в отдел кадров.</p>
+
+<button onclick="generatePDF()" class="flex items-center justify-center gap-2 mx-auto text-indigo-600 font-bold hover:underline">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+Скачать мой экземпляр анкеты (PDF)
+</button>
+</div>`;
+};
+
+window.generatePDF = () => {
+const content = document.getElementById('pdfContent');
+const totalSymbols = answers.reduce((acc, a) => acc + (typeof a.value === 'string' ? a.value.length : 0), 0);
+
+let html = `
+<div style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px;">
+<h1 style="margin: 0; font-size: 18pt;">АНКЕТА КАНДИДАТА</h1>
+<p style="margin: 0; font-size: 8pt; color: #666;">Цифровой отчёт сбора данных (Без автоматической интерпретации)</p>
+</div>
+
+<table style="width: 100%; font-size: 10pt; margin-bottom: 30px;">
 <tr><td style="font-weight: bold; width: 140px;">Кандидат:</td><td>${userData.name}</td></tr>
 <tr><td style="font-weight: bold;">Должность:</td><td>${userData.job}</td></tr>
 <tr><td style="font-weight: bold;">Возраст:</td><td>${userData.age}</td></tr>
@@ -6,13 +316,13 @@
 </table>
 
 <div style="background: #f1f5f9; padding: 10px; border-left: 3px solid #64748b; margin-bottom: 30px; font-size: 9pt;">
-<strong>Комментарий для HR:</strong> В данной анкете представлены «сырые» ответы кандидата. 
+<strong>Комментарий для HR:</strong> В данной анкете представлены «сырые» ответы кандидата.
 Анализ должен проводиться вручную согласно установленной методике оценки.
 </div>
 `;
 
 answers.forEach((a, i) => {
-const formattedTime = ${Math.floor(a.seconds / 60)}:${(a.seconds % 60).toString().padStart(2, '0')};
+const formattedTime = `${Math.floor(a.seconds / 60)}:${(a.seconds % 60).toString().padStart(2, '0')}`;
 html += `
 <div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 15px; page-break-inside: avoid;">
 <div style="font-weight: bold; font-size: 10pt; margin-bottom: 5px;">${i+1}. ${a.qText}</div>
@@ -32,7 +342,7 @@ content.innerHTML = html;
 
 const opt = {
 margin: 15,
-filename: anketa_${userData.name.replace(/\s+/g, '_')}.pdf,
+filename: `anketa_${userData.name.replace(/\s+/g, '_')}.pdf`,
 image: { type: 'jpeg', quality: 0.98 },
 html2canvas: { scale: 2 },
 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
